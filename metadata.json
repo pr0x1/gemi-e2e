@@ -1,0 +1,7 @@
+{
+  "name": "Gemini Live Conversation",
+  "description": "Real-time speech-to-speech conversation with Gemini using the Live API.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
