@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+// FIX: `LiveSession` is not an exported member and has been removed from the import.
 import {
   GoogleGenAI,
-  LiveSession,
   LiveServerMessage,
   Modality,
   Blob
@@ -19,7 +19,8 @@ const statusDiv = document.getElementById('status') as HTMLDivElement;
 
 // --- ESTADO DE LA APLICACIÓN ---
 let isRecording = false;
-let sessionPromise: Promise<LiveSession> | null = null;
+// FIX: The type `LiveSession` is not exported, so the promise is now typed with `any`.
+let sessionPromise: Promise<any> | null = null;
 let mediaStream: MediaStream | null = null;
 let inputAudioContext: AudioContext | null = null;
 let outputAudioContext: AudioContext | null = null;
@@ -137,6 +138,7 @@ async function startConversation() {
     
     mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
+    // FIX: `vadConfig` is not a valid property and has been removed from the `config` object below.
     sessionPromise = ai.live.connect({
       model: 'gemini-2.5-flash-native-audio-preview-09-2025',
       config: {
@@ -147,7 +149,7 @@ async function startConversation() {
       },
       callbacks: {
         onopen: () => {
-          updateStatus('Conexión establecida. ¡Habla ahora!');
+          updateStatus('Conexión establecida. Esperando que hables...');
           // Transmitir audio del micrófono al modelo
           const source = inputAudioContext.createMediaStreamSource(mediaStream);
           scriptProcessor = inputAudioContext.createScriptProcessor(4096, 1, 1);
@@ -162,6 +164,8 @@ async function startConversation() {
           scriptProcessor.connect(inputAudioContext.destination);
         },
         onmessage: async (message: LiveServerMessage) => {
+          // FIX: `vadSignal` does not exist on `LiveServerContent`, so related logic has been removed.
+            
           // Gestionar transcripciones
           if (message.serverContent?.inputTranscription) {
             currentInputTranscription += message.serverContent.inputTranscription.text;
@@ -174,6 +178,7 @@ async function startConversation() {
             addChatMessage(currentOutputTranscription, 'model');
             currentInputTranscription = '';
             currentOutputTranscription = '';
+            updateStatus('Esperando que hables...');
           }
           
           // Gestionar audio de salida
