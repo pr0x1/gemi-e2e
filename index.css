@@ -112,6 +112,11 @@ header p {
   border-radius: 18px;
   max-width: 80%;
   word-wrap: break-word;
+  transition: opacity 0.3s ease;
+}
+
+.message.in-progress {
+  opacity: 0.7;
 }
 
 .user-message {

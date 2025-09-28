@@ -28,9 +28,11 @@ let scriptProcessor: ScriptProcessorNode | null = null;
 let nextStartTime = 0;
 const outputSources = new Set<AudioBufferSourceNode>();
 
-// Transcripciones parciales
+// Transcripciones y elementos de UI en tiempo real
 let currentInputTranscription = '';
 let currentOutputTranscription = '';
+let currentUserMessageEl: HTMLDivElement | null = null;
+let currentModelMessageEl: HTMLDivElement | null = null;
 
 // --- INICIALIZACIÓN DE LA API ---
 // Se asume que API_KEY está configurada en el entorno de ejecución
@@ -95,19 +97,10 @@ async function decodeAudioData(
 
 // --- LÓGICA DE LA INTERFAZ ---
 
-function addChatMessage(text: string, sender: 'user' | 'model') {
-  if (!text.trim()) return;
-  const messageElement = document.createElement('div');
-  messageElement.classList.add('message', `${sender}-message`);
-  messageElement.textContent = text;
-  chatContainer.appendChild(messageElement);
-  chatContainer.scrollTop = chatContainer.scrollHeight;
-}
-
 function updateButton(recording: boolean, error: boolean = false) {
   isRecording = recording;
   toggleButton.classList.toggle('recording', recording);
-  buttonText.textContent = recording ? 'Detener Conversación' : 'Iniciar Conversación';
+  buttonText.textContent = recording ? 'Finalizar Conversación' : 'Iniciar Conversación';
   toggleButton.disabled = error;
 }
 
@@ -129,6 +122,8 @@ async function startConversation() {
   updateButton(true);
   updateStatus('Iniciando...');
   chatContainer.innerHTML = ''; // Limpiar chat al iniciar
+  currentUserMessageEl = null;
+  currentModelMessageEl = null;
 
   try {
     // Contextos de audio (se crean aquí para asegurar que el usuario interactuó con la página)
@@ -149,7 +144,7 @@ async function startConversation() {
       },
       callbacks: {
         onopen: () => {
-          updateStatus('Conexión establecida. Esperando que hables...');
+          updateStatus('Conexión establecida. Di algo...');
           // Transmitir audio del micrófono al modelo
           const source = inputAudioContext.createMediaStreamSource(mediaStream);
           scriptProcessor = inputAudioContext.createScriptProcessor(4096, 1, 1);
@@ -164,23 +159,52 @@ async function startConversation() {
           scriptProcessor.connect(inputAudioContext.destination);
         },
         onmessage: async (message: LiveServerMessage) => {
-          // FIX: `vadSignal` does not exist on `LiveServerContent`, so related logic has been removed.
-            
-          // Gestionar transcripciones
+          // Gestionar transcripciones en tiempo real
           if (message.serverContent?.inputTranscription) {
             currentInputTranscription += message.serverContent.inputTranscription.text;
+            if (!currentUserMessageEl) {
+              currentUserMessageEl = document.createElement('div');
+              currentUserMessageEl.classList.add('message', 'user-message', 'in-progress');
+              chatContainer.appendChild(currentUserMessageEl);
+            }
+            currentUserMessageEl.textContent = currentInputTranscription;
+            updateStatus('Escuchando...');
           }
+
           if (message.serverContent?.outputTranscription) {
+            if (currentUserMessageEl) {
+              currentUserMessageEl.classList.remove('in-progress');
+              currentUserMessageEl = null;
+            }
             currentOutputTranscription += message.serverContent.outputTranscription.text;
+            if (!currentModelMessageEl) {
+              currentModelMessageEl = document.createElement('div');
+              currentModelMessageEl.classList.add('message', 'model-message', 'in-progress');
+              chatContainer.appendChild(currentModelMessageEl);
+            }
+            currentModelMessageEl.textContent = currentOutputTranscription;
+            updateStatus('Gemini está respondiendo...');
           }
+
+          // Un turno se completa cuando Gemini termina de hablar
           if (message.serverContent?.turnComplete) {
-            addChatMessage(currentInputTranscription, 'user');
-            addChatMessage(currentOutputTranscription, 'model');
+            if (currentModelMessageEl) {
+              currentModelMessageEl.classList.remove('in-progress');
+            }
+            if (currentUserMessageEl) { // Caso: el usuario habló pero Gemini no respondió
+              currentUserMessageEl.classList.remove('in-progress');
+            }
+            
+            // Reiniciar para el siguiente turno
+            currentUserMessageEl = null;
+            currentModelMessageEl = null;
             currentInputTranscription = '';
             currentOutputTranscription = '';
-            updateStatus('Esperando que hables...');
+            updateStatus('Di algo...');
           }
           
+          chatContainer.scrollTop = chatContainer.scrollHeight;
+
           // Gestionar audio de salida
           const audioData = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
           if (audioData) {
@@ -236,7 +260,7 @@ async function startConversation() {
 function stopConversation(error: boolean = false) {
     if (!isRecording && !error) return; // Ya está detenido
 
-    updateStatus(error ? 'Error, conexión cerrada.' : 'Deteniendo...');
+    updateStatus(error ? 'Error, conexión cerrada.' : 'Finalizando...');
 
     // Cerrar sesión de Gemini
     sessionPromise?.then(session => session.close());
@@ -261,6 +285,8 @@ function stopConversation(error: boolean = false) {
     
     currentInputTranscription = '';
     currentOutputTranscription = '';
+    currentUserMessageEl = null;
+    currentModelMessageEl = null;
 
     updateButton(false, error);
     if (!error) updateStatus('Listo para iniciar una nueva conversación.');
