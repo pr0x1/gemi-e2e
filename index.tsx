@@ -8,9 +8,7 @@ import {
   GoogleGenAI,
   LiveServerMessage,
   Modality,
-  Blob,
-  FunctionDeclaration,
-  Type,
+  Blob
 } from '@google/genai';
 
 // --- ELEMENTOS DEL DOM ---
@@ -39,29 +37,6 @@ let currentModelMessageEl: HTMLDivElement | null = null;
 // --- INICIALIZACIÓN DE LA API ---
 // Se asume que API_KEY está configurada en el entorno de ejecución
 const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
-
-// --- DEFINICIÓN DE HERRAMIENTAS (FUNCTION CALLING) ---
-const mcpServerUrl = 'https://cap-agent-flow.cfapps.us10-001.hana.ondemand.com/mcp';
-
-const callMcpServerFunctionDeclaration: FunctionDeclaration = {
-  name: 'callMcpServer',
-  description: 'Llama a un servidor MCP externo para utilizar una herramienta específica con los parámetros dados. Úsalo para cualquier tarea que requiera datos o acciones externas.',
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      toolName: {
-        type: Type.STRING,
-        description: 'El nombre de la herramienta a llamar en el servidor MCP.',
-      },
-      parameters: {
-        type: Type.OBJECT,
-        description: 'Un objeto que contiene los parámetros para la herramienta especificada.',
-      },
-    },
-    required: ['toolName', 'parameters'],
-  },
-};
-
 
 // --- FUNCIONES DE AUDIO ---
 
@@ -165,8 +140,7 @@ async function startConversation() {
         responseModalities: [Modality.AUDIO],
         inputAudioTranscription: {},
         outputAudioTranscription: {},
-        systemInstruction: 'Eres un asistente amigable y conversacional. Habla en español. Puedes usar herramientas externas a través del servidor MCP cuando sea necesario.',
-        tools: [{functionDeclarations: [callMcpServerFunctionDeclaration]}],
+        systemInstruction: 'Eres un asistente amigable y conversacional. Habla en español.',
       },
       callbacks: {
         onopen: () => {
@@ -210,55 +184,6 @@ async function startConversation() {
             }
             currentModelMessageEl.textContent = currentOutputTranscription;
             updateStatus('Gemini está respondiendo...');
-          }
-          
-          // Gestionar llamadas a herramientas (MCP Server)
-          if (message.toolCall) {
-            updateStatus('Consultando herramienta externa...');
-            const session = await sessionPromise;
-            if (!session) return;
-  
-            for (const fc of message.toolCall.functionCalls) {
-              if (fc.name === 'callMcpServer') {
-                try {
-                  console.log('Llamando a la herramienta:', fc.args.toolName, 'con parámetros:', fc.args.parameters);
-  
-                  const mcpResponse = await fetch(mcpServerUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      toolName: fc.args.toolName,
-                      parameters: fc.args.parameters,
-                    }),
-                  });
-  
-                  if (!mcpResponse.ok) {
-                    throw new Error(`El servidor MCP respondió con el estado: ${mcpResponse.status}`);
-                  }
-  
-                  const result = await mcpResponse.json();
-  
-                  session.sendToolResponse({
-                    functionResponses: {
-                      id: fc.id,
-                      name: fc.name,
-                      response: { result: result },
-                    }
-                  });
-  
-                } catch (error) {
-                  console.error('Error llamando a la herramienta externa:', error);
-                  session.sendToolResponse({
-                    functionResponses: {
-                      id: fc.id,
-                      name: fc.name,
-                      response: { result: `Error: ${error.message}` },
-                    }
-                  });
-                }
-              }
-            }
-            updateStatus('Procesando respuesta de la herramienta...');
           }
 
           // Un turno se completa cuando Gemini termina de hablar
