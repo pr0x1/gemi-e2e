@@ -8,6 +8,14 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
+        proxy: {
+          '/mcp': {
+            target: 'https://cap-agent-flow.cfapps.us10-001.hana.ondemand.com',
+            changeOrigin: true,
+            secure: false,
+            rewrite: (path) => path.replace(/^\/mcp/, '/mcp'),
+          }
+        }
       },
       plugins: [],
       define: {
