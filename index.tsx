@@ -41,8 +41,12 @@ let currentUserMessageEl: HTMLDivElement | null = null;
 let currentModelMessageEl: HTMLDivElement | null = null;
 
 // --- INICIALIZACIÓN DE LA API ---
-// Se asume que API_KEY está configurada en el entorno de ejecución
-const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+// FIX: Use import.meta.env for Vite environment variables
+const apiKey = import.meta.env.VITE_API_KEY;
+if (!apiKey) {
+  throw new Error('VITE_API_KEY is not set. Please add it to your .env file.');
+}
+const ai = new GoogleGenAI({apiKey});
 
 // --- FUNCIONES DE HERRAMIENTAS MCP ---
 
