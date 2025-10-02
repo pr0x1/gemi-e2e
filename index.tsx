@@ -8,7 +8,9 @@ import {
   GoogleGenAI,
   LiveServerMessage,
   Modality,
-  Blob
+  Blob,
+  FunctionDeclaration,
+  Type
 } from '@google/genai';
 
 // --- ELEMENTOS DEL DOM ---
@@ -94,6 +96,51 @@ async function decodeAudioData(
   return buffer;
 }
 
+// --- FUNCIÓN DE HERRAMIENTA MCP ---
+async function fetchSalesOrderDetails(salesOrderID: string): Promise<any> {
+  const url = '/mcp-api'; // Proxy hacia el servidor MCP para evitar errores CORS en desarrollo
+  const requestBody = {
+    method: "tools/call",
+    params: {
+      name: "getSalesOrderDetails",
+      arguments: { salesOrderID },
+      _meta: { progressToken: 0 }
+    }
+  };
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+    return await response.json();
+  } catch (error) {
+    console.error("Error al consultar el servidor MCP:", error);
+    throw error;
+  }
+}
+
+// --- DECLARACIÓN DE HERRAMIENTA PARA GEMINI ---
+const getSalesOrderDetailsTool: FunctionDeclaration = {
+  name: 'getSalesOrderDetails',
+  description: 'Obtiene los detalles de una orden de venta específica usando su ID.',
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      salesOrderID: {
+        type: Type.STRING,
+        description: 'El ID de la orden de venta a consultar.',
+      },
+    },
+    required: ['salesOrderID'],
+  },
+};
+
 
 // --- LÓGICA DE LA INTERFAZ ---
 
@@ -140,7 +187,8 @@ async function startConversation() {
         responseModalities: [Modality.AUDIO],
         inputAudioTranscription: {},
         outputAudioTranscription: {},
-        systemInstruction: 'Eres un asistente amigable y conversacional. Habla en español.',
+        systemInstruction: 'Eres un asistente amigable y conversacional. Habla en español. También puedes ayudar a consultar detalles de órdenes de venta.',
+        tools: [{functionDeclarations: [getSalesOrderDetailsTool]}],
       },
       callbacks: {
         onopen: () => {
@@ -159,6 +207,43 @@ async function startConversation() {
           scriptProcessor.connect(inputAudioContext.destination);
         },
         onmessage: async (message: LiveServerMessage) => {
+          // Gestionar llamadas a herramientas (function calling)
+          if (message.toolCall) {
+            for (const fc of message.toolCall.functionCalls) {
+              if (fc.name === 'getSalesOrderDetails') {
+                updateStatus(`Consultando orden ${fc.args.salesOrderID}...`);
+                try {
+                  // FIX: The `FunctionCall` arguments from the Gemini API are of type `unknown`. Cast to string.
+                  const result = await fetchSalesOrderDetails(fc.args.salesOrderID as string);
+                  const resultString = JSON.stringify(result);
+                  
+                  sessionPromise?.then((session) => {
+                    session.sendToolResponse({
+                      functionResponses: {
+                        id: fc.id,
+                        name: fc.name,
+                        response: { result: resultString },
+                      },
+                    });
+                  });
+                } catch (error) {
+                  console.error('Error en la llamada a la herramienta:', error);
+                  // FIX: Safely access the message property from the 'unknown' error type.
+                  const errorMessage = error instanceof Error ? error.message : String(error);
+                  sessionPromise?.then((session) => {
+                    session.sendToolResponse({
+                      functionResponses: {
+                        id: fc.id,
+                        name: fc.name,
+                        response: { result: `Error al obtener los detalles: ${errorMessage}` },
+                      },
+                    });
+                  });
+                }
+              }
+            }
+          }
+
           // Gestionar transcripciones en tiempo real
           if (message.serverContent?.inputTranscription) {
             currentInputTranscription += message.serverContent.inputTranscription.text;
@@ -252,7 +337,9 @@ async function startConversation() {
 
   } catch (error) {
     console.error('Fallo al iniciar la conversación:', error);
-    updateStatus(`Error al iniciar: ${error.message}`);
+    // FIX: Safely access the message property from the 'unknown' error type.
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    updateStatus(`Error al iniciar: ${errorMessage}`);
     stopConversation(true);
   }
 }
