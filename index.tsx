@@ -8,8 +8,7 @@ import {
   GoogleGenAI,
   LiveServerMessage,
   Modality,
-  Blob,
-  FunctionDeclaration
+  Blob
 } from '@google/genai';
 
 // --- ELEMENTOS DEL DOM ---
@@ -17,11 +16,6 @@ const toggleButton = document.getElementById('toggle-button') as HTMLButtonEleme
 const buttonText = toggleButton.querySelector('span') as HTMLSpanElement;
 const chatContainer = document.getElementById('chat-container') as HTMLDivElement;
 const statusDiv = document.getElementById('status') as HTMLDivElement;
-
-// --- CONSTANTES ---
-// NOTE: This URL points to a local proxy defined in `vite.config.ts` to avoid CORS issues.
-const MCP_SERVER_URL = '/mcp-proxy/mcp';
-
 
 // --- ESTADO DE LA APLICACIÓN ---
 let isRecording = false;
@@ -41,56 +35,8 @@ let currentUserMessageEl: HTMLDivElement | null = null;
 let currentModelMessageEl: HTMLDivElement | null = null;
 
 // --- INICIALIZACIÓN DE LA API ---
-// FIX: Use import.meta.env for Vite environment variables
-const apiKey = import.meta.env.VITE_API_KEY;
-if (!apiKey) {
-  throw new Error('VITE_API_KEY is not set. Please add it to your .env file.');
-}
-const ai = new GoogleGenAI({apiKey});
-
-// --- FUNCIONES DE HERRAMIENTAS MCP ---
-
-async function fetchMcpTools(): Promise<FunctionDeclaration[]> {
-  try {
-    const response = await fetch(MCP_SERVER_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ method: 'tools/list', params: {} }),
-    });
-    if (!response.ok) {
-      throw new Error(`MCP Server responded with status ${response.status}`);
-    }
-    const data = await response.json();
-    if (data.result && Array.isArray(data.result)) {
-        return data.result as FunctionDeclaration[];
-    }
-    console.warn('MCP server tool list is empty or in an unexpected format.', data);
-    return [];
-  } catch (error) {
-    console.error('Failed to fetch MCP tools:', error);
-    updateStatus('Error: No se pudieron cargar las herramientas.');
-    return [];
-  }
-}
-
-async function executeMcpTool(name: string, args: any): Promise<any> {
-    try {
-        const response = await fetch(MCP_SERVER_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ method: name, params: args }),
-        });
-        if (!response.ok) {
-            throw new Error(`MCP Server responded with status ${response.status}`);
-        }
-        const data = await response.json();
-        return data.result || data;
-    } catch (error) {
-        console.error(`Failed to execute MCP tool ${name}:`, error);
-        return { error: `Failed to execute tool: ${error.message}` };
-    }
-}
-
+// Se asume que API_KEY está configurada en el entorno de ejecución
+const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
 
 // --- FUNCIONES DE AUDIO ---
 
@@ -179,14 +125,6 @@ async function startConversation() {
   currentUserMessageEl = null;
   currentModelMessageEl = null;
 
-  updateStatus('Cargando herramientas del servidor MCP...');
-  const mcpTools = await fetchMcpTools();
-  if (mcpTools.length > 0) {
-      updateStatus(`Se cargaron ${mcpTools.length} herramientas. Iniciando...`);
-  } else {
-      updateStatus('Iniciando sin herramientas externas...');
-  }
-
   try {
     // Contextos de audio (se crean aquí para asegurar que el usuario interactuó con la página)
     // FIX: Cast window to `any` to allow access to `webkitAudioContext` for older browsers, resolving TypeScript error.
@@ -202,8 +140,7 @@ async function startConversation() {
         responseModalities: [Modality.AUDIO],
         inputAudioTranscription: {},
         outputAudioTranscription: {},
-        systemInstruction: 'Eres un asistente amigable y conversacional. Habla en español. Cuando uses una herramienta, informa al usuario de lo que estás haciendo y confirma el resultado.',
-        tools: mcpTools.length > 0 ? [{ functionDeclarations: mcpTools }] : undefined,
+        systemInstruction: 'Eres un asistente amigable y conversacional. Habla en español.',
       },
       callbacks: {
         onopen: () => {
@@ -222,53 +159,6 @@ async function startConversation() {
           scriptProcessor.connect(inputAudioContext.destination);
         },
         onmessage: async (message: LiveServerMessage) => {
-          // Gestionar llamadas a herramientas (function calling)
-          if (message.toolCall) {
-            if (currentUserMessageEl) {
-                currentUserMessageEl.classList.remove('in-progress');
-                currentUserMessageEl = null;
-                currentInputTranscription = '';
-            }
-            updateStatus('Gemini está usando una herramienta...');
-            
-            for (const fc of message.toolCall.functionCalls) {
-                // Mostrar llamada a herramienta en el chat
-                const toolMessageEl = document.createElement('div');
-                toolMessageEl.classList.add('message', 'tool-message');
-                toolMessageEl.innerHTML = `
-                    <div class="tool-call-info">
-                        <svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 0 24 24" width="20px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg>
-                        <span>Usando herramienta: <strong>${fc.name}</strong></span>
-                    </div>
-                    <pre>${JSON.stringify(fc.args, null, 2)}</pre>
-                    <div class="tool-spinner"></div>
-                `;
-                chatContainer.appendChild(toolMessageEl);
-                chatContainer.scrollTop = chatContainer.scrollHeight;
-
-                // Ejecutar la herramienta
-                const result = await executeMcpTool(fc.name, fc.args);
-
-                // Actualizar UI con el resultado
-                const spinner = toolMessageEl.querySelector('.tool-spinner');
-                if (spinner) spinner.remove();
-                const resultPre = document.createElement('pre');
-                resultPre.textContent = `Resultado: ${JSON.stringify(result, null, 2)}`;
-                toolMessageEl.appendChild(resultPre);
-
-                // Enviar respuesta a Gemini
-                sessionPromise?.then((session) => {
-                    session.sendToolResponse({
-                        functionResponses: {
-                            id: fc.id,
-                            name: fc.name,
-                            response: { result: result },
-                        }
-                    })
-                });
-            }
-          }
-
           // Gestionar transcripciones en tiempo real
           if (message.serverContent?.inputTranscription) {
             currentInputTranscription += message.serverContent.inputTranscription.text;

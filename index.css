@@ -8,8 +8,6 @@
   --card-background: #ffffff;
   --user-message-bg: #e1f5fe;
   --model-message-bg: #f1f3f4;
-  --tool-message-bg: #e8eaf6;
-  --tool-message-border: #3f51b5;
   --border-color: #dadce0;
   --font-family: 'Roboto', sans-serif;
 }
@@ -131,49 +129,6 @@ header p {
   background-color: var(--model-message-bg);
   align-self: flex-start;
   border-bottom-left-radius: 4px;
-}
-
-.tool-message {
-  background-color: var(--tool-message-bg);
-  align-self: center;
-  width: 90%;
-  max-width: 90%;
-  border-radius: 8px;
-  border-left: 4px solid var(--tool-message-border);
-  font-size: 0.9rem;
-}
-
-.tool-message .tool-call-info {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-weight: 500;
-  color: var(--tool-message-border);
-}
-
-.tool-message pre {
-  background-color: rgba(0,0,0,0.05);
-  padding: 0.5rem;
-  border-radius: 4px;
-  margin-top: 0.5rem;
-  white-space: pre-wrap;
-  word-break: break-all;
-  font-size: 0.8rem;
-}
-
-.tool-spinner {
-  border: 3px solid #f3f3f3;
-  border-top: 3px solid var(--tool-message-border);
-  border-radius: 50%;
-  width: 20px;
-  height: 20px;
-  animation: spin 1s linear infinite;
-  margin-top: 0.5rem;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
 }
 
 #status {
