@@ -1,9 +1,9 @@
 // vite.config.ts
 import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react'; // Asumiendo que usas React
+// ...existing code...
 
 export default defineConfig({
-  plugins: [react()], // Asumiendo que usas React
+  // plugins: [], // No se usa React
   server: {
     proxy: {
       '/mcp-api': {

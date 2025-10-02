@@ -38,7 +38,7 @@ let currentModelMessageEl: HTMLDivElement | null = null;
 
 // --- INICIALIZACIÓN DE LA API ---
 // Se asume que API_KEY está configurada en el entorno de ejecución
-const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+const ai = new GoogleGenAI({apiKey: import.meta.env.VITE_API_KEY});
 
 // --- FUNCIONES DE AUDIO ---
 
@@ -97,15 +97,22 @@ async function decodeAudioData(
 }
 
 // --- FUNCIÓN DE HERRAMIENTA MCP ---
+// Contador global para id y progressToken
+let salesOrderRequestCounter = 1;
 async function fetchSalesOrderDetails(salesOrderID: string): Promise<any> {
   const url = '/mcp-api'; // Proxy hacia el servidor MCP para evitar errores CORS en desarrollo
+  // Usar un contador consecutivo para id y progressToken
+  const id = salesOrderRequestCounter++;
+  const progressToken = id;
   const requestBody = {
     method: "tools/call",
     params: {
       name: "getSalesOrderDetails",
       arguments: { salesOrderID },
-      _meta: { progressToken: 0 }
-    }
+      _meta: { progressToken }
+    },
+    jsonrpc: "2.0",
+    id
   };
 
   try {
